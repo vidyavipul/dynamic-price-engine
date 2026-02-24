@@ -1,15 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dynamic Pricing Engine — Bike Rental</title>
-    <meta name="description" content="Rule-based dynamic pricing engine for self-drive bike rentals. Compute demand-aware pricing with real-time explanations.">
+    <meta name="description"
+        content="Data-driven dynamic pricing engine for self-drive bike rentals. Demand-aware pricing with auto-detected contextual overrides.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
     <div class="app">
         <!-- Header -->
@@ -33,9 +37,7 @@
                 <!-- Vehicle Selector -->
                 <div class="form-group">
                     <label class="form-label">Vehicle Type</label>
-                    <div class="vehicle-grid" id="vehicleGrid">
-                        <!-- Populated by JS -->
-                    </div>
+                    <div class="vehicle-grid" id="vehicleGrid"></div>
                 </div>
 
                 <!-- DateTime & Duration Row -->
@@ -57,14 +59,6 @@
                             <option value="48">48 hours (2 Days)</option>
                             <option value="72">72 hours (3 Days)</option>
                         </select>
-                    </div>
-                </div>
-
-                <!-- Overrides -->
-                <div class="form-group">
-                    <label class="form-label">Contextual Overrides</label>
-                    <div class="overrides-grid" id="overridesGrid">
-                        <!-- Populated by JS -->
                     </div>
                 </div>
 
@@ -124,12 +118,16 @@
                     <div class="gauge-detail" id="gaugeDetail"></div>
                 </div>
 
+                <!-- Auto-Detected Overrides -->
+                <div class="overrides-card" id="overridesCard" style="display: none;">
+                    <h3 class="card-title">🔍 Auto-Detected Contextual Factors</h3>
+                    <div class="overrides-list" id="overridesList"></div>
+                </div>
+
                 <!-- Explanation Steps -->
                 <div class="explanation-card">
                     <h3 class="card-title">Pricing Breakdown</h3>
-                    <div class="explanation-steps" id="explanationSteps">
-                        <!-- Populated by JS -->
-                    </div>
+                    <div class="explanation-steps" id="explanationSteps"></div>
                 </div>
 
                 <!-- Warnings -->
@@ -146,4 +144,5 @@
 
     <script src="/static/app.js"></script>
 </body>
+
 </html>
