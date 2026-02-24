@@ -101,6 +101,25 @@ def compute_profiles(bookings: List[Dict]) -> Dict:
         "day_type": normalize_profile(day_type_avg),
     }
 
+    # ── Weather probabilities per month ──
+    # Compute from actual booking data: what % of bookings per month had each weather
+    weather_by_month = defaultdict(lambda: defaultdict(int))
+    month_total = defaultdict(int)
+    for b in bookings:
+        month = str(b["rental_start_dt"].month)
+        weather = b.get("weather", "clear")
+        weather_by_month[month][weather] += 1
+        month_total[month] += 1
+
+    weather_probs = {}
+    for month in weather_by_month:
+        total = month_total[month]
+        weather_probs[month] = {
+            w: round(count / total, 4)
+            for w, count in weather_by_month[month].items()
+        }
+    profiles["weather_by_month"] = weather_probs
+
     # Compute baseline statistics
     total_days = len({b["rental_start_dt"].date() for b in bookings})
     baseline_daily = len(bookings) / total_days if total_days > 0 else 0
