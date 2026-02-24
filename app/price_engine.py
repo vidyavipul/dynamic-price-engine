@@ -1,0 +1,248 @@
+"""
+Price Engine — Computes dynamic rental price.
+
+Maps demand score → surge multiplier, applies overrides, clamps to bounds,
+applies duration discounts, and returns the final price with full breakdown.
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime, date
+from typing import List, Optional, Dict
+
+from app.config import (
+    VEHICLE_BASE_RATES, VEHICLE_DISPLAY_NAMES, VehicleType,
+    MIN_MULTIPLIER, MAX_MULTIPLIER,
+    DURATION_DISCOUNT_TIERS, LOW_CONFIDENCE_DAYS,
+)
+from app.demand_model import DemandModel, DemandResult
+from app.overrides import compute_combined_override
+
+
+@dataclass
+class PriceResult:
+    """Complete pricing result with full breakdown."""
+    # Final output
+    final_price: float
+    hourly_rate: float
+    effective_hourly_rate: float  # after surge + duration discount
+
+    # Inputs
+    vehicle_type: str
+    vehicle_name: str
+    base_rate: float
+    duration_hours: int
+    rental_datetime: str
+
+    # Demand
+    demand: Dict
+
+    # Multipliers
+    surge_multiplier: float
+    override_factor: float
+    final_multiplier: float
+    duration_discount: float
+
+    # Metadata
+    overrides_applied: List[Dict]
+    override_was_capped: bool
+    warnings: List[str] = field(default_factory=list)
+
+    # Explanation steps
+    explanation: List[str] = field(default_factory=list)
+
+
+class PriceEngine:
+    """
+    Dynamic pricing engine for bike rentals.
+
+    Takes a rental datetime, vehicle type, duration, and optional overrides.
+    Returns a fully explainable price calculation.
+    """
+
+    def __init__(self, demand_model: Optional[DemandModel] = None):
+        self.demand_model = demand_model or DemandModel()
+
+    def calculate_price(
+        self,
+        rental_datetime: datetime,
+        vehicle_type: str,
+        duration_hours: int,
+        active_overrides: Optional[List[str]] = None,
+    ) -> PriceResult:
+        """
+        Calculate the dynamic price for a rental.
+
+        Args:
+            rental_datetime: When the rental starts
+            vehicle_type: Vehicle category (scooter, standard_bike, etc.)
+            duration_hours: Rental duration in hours
+            active_overrides: List of override names (rain, festival, etc.)
+
+        Returns:
+            PriceResult with full breakdown
+
+        Raises:
+            ValueError: If vehicle_type or duration is invalid
+        """
+        # ── Input validation ──
+        warnings = []
+
+        try:
+            v_type = VehicleType(vehicle_type)
+        except ValueError:
+            valid = [v.value for v in VehicleType]
+            raise ValueError(
+                f"Invalid vehicle type '{vehicle_type}'. "
+                f"Valid types: {valid}"
+            )
+
+        if not isinstance(duration_hours, int) or duration_hours < 1:
+            raise ValueError(
+                f"Duration must be a positive integer (got {duration_hours}). "
+                f"Minimum rental: 1 hour."
+            )
+
+        # Check for past dates
+        now = datetime.now()
+        if rental_datetime < now:
+            warnings.append(
+                f"⚠️ Rental date is in the past ({rental_datetime.strftime('%Y-%m-%d %H:%M')}). "
+                f"Pricing computed for historical reference."
+            )
+
+        # Check for far-future dates
+        days_ahead = (rental_datetime.date() - now.date()).days
+        if days_ahead > LOW_CONFIDENCE_DAYS:
+            warnings.append(
+                f"⚠️ Booking is {days_ahead} days ahead (>{LOW_CONFIDENCE_DAYS} days). "
+                f"Demand prediction confidence is lower for distant dates."
+            )
+
+        # ── Step 1: Demand estimation ──
+        demand_result = self.demand_model.estimate_demand(rental_datetime)
+
+        # ── Step 2: Base surge multiplier from demand ──
+        surge_multiplier = MIN_MULTIPLIER + demand_result.score * (MAX_MULTIPLIER - MIN_MULTIPLIER)
+
+        # ── Step 3: Apply overrides ──
+        active_overrides = active_overrides or []
+        override_factor, override_breakdown, override_capped = compute_combined_override(
+            active_overrides
+        )
+
+        # ── Step 4: Final multiplier (clamped) ──
+        raw_multiplier = surge_multiplier * override_factor
+        final_multiplier = max(MIN_MULTIPLIER, min(MAX_MULTIPLIER, raw_multiplier))
+
+        # ── Step 5: Duration discount ──
+        duration_discount = 1.0
+        for threshold, discount in DURATION_DISCOUNT_TIERS:
+            if duration_hours >= threshold:
+                duration_discount = discount
+                break
+
+        # ── Step 6: Compute price ──
+        base_rate = VEHICLE_BASE_RATES[v_type]
+        effective_hourly = base_rate * final_multiplier * duration_discount
+        total_price = effective_hourly * duration_hours
+
+        # ── Build explanation ──
+        explanation = self._build_explanation(
+            v_type, base_rate, duration_hours, demand_result,
+            surge_multiplier, override_factor, override_breakdown,
+            override_capped, final_multiplier, duration_discount,
+            effective_hourly, total_price
+        )
+
+        # ── Build demand dict for result ──
+        demand_dict = {
+            "score": demand_result.score,
+            "zone": demand_result.zone.name,
+            "zone_color": demand_result.zone.color,
+            "zone_emoji": demand_result.zone.emoji,
+            "zone_description": demand_result.zone.description,
+            "day_type": demand_result.day_type,
+            "day_type_score": demand_result.day_type_score,
+            "season_score": demand_result.season_score,
+            "time_slot_score": demand_result.time_slot_score,
+            "is_holiday": demand_result.is_holiday,
+            "holiday_name": demand_result.holiday_name,
+        }
+
+        return PriceResult(
+            final_price=round(total_price, 2),
+            hourly_rate=base_rate,
+            effective_hourly_rate=round(effective_hourly, 2),
+            vehicle_type=v_type.value,
+            vehicle_name=VEHICLE_DISPLAY_NAMES[v_type],
+            base_rate=base_rate,
+            duration_hours=duration_hours,
+            rental_datetime=rental_datetime.strftime("%Y-%m-%dT%H:%M:%S"),
+            demand=demand_dict,
+            surge_multiplier=round(surge_multiplier, 4),
+            override_factor=round(override_factor, 4),
+            final_multiplier=round(final_multiplier, 4),
+            duration_discount=duration_discount,
+            overrides_applied=override_breakdown,
+            override_was_capped=override_capped,
+            warnings=warnings,
+            explanation=explanation,
+        )
+
+    def _build_explanation(
+        self, v_type, base_rate, duration, demand, surge,
+        override_factor, override_breakdown, override_capped,
+        final_mult, duration_discount, effective_hourly, total
+    ) -> List[str]:
+        """Build step-by-step human-readable pricing explanation."""
+        steps = []
+        weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+        steps.append(f"🏍️ Vehicle: {VEHICLE_DISPLAY_NAMES[v_type]} — Base rate: ₹{base_rate}/hr")
+
+        # Demand breakdown
+        day_label = demand.day_type.replace("_", " ").title()
+        steps.append(
+            f"📅 Day type: {day_label} ({weekdays[demand.weekday]}) — "
+            f"score: {demand.day_type_score:.2f}"
+        )
+
+        months = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+        steps.append(
+            f"🌤️ Season ({months[demand.month]}): score {demand.season_score:.2f}"
+        )
+
+        steps.append(
+            f"🕐 Time slot ({demand.hour:02d}:00): score {demand.time_slot_score:.2f}"
+        )
+
+        if demand.is_holiday and demand.holiday_name:
+            steps.append(f"🎉 Holiday: {demand.holiday_name}")
+
+        steps.append(
+            f"📊 Blended demand score: {demand.score:.2f} → "
+            f"{demand.zone.emoji} {demand.zone.name} zone"
+        )
+
+        steps.append(f"📈 Surge multiplier: {surge:.2f}×")
+
+        # Overrides
+        if override_breakdown:
+            for ob in override_breakdown:
+                direction = "↓" if ob["effect"] == "discount" else "↑"
+                steps.append(
+                    f"  {direction} {ob['description']}: ×{ob['factor']:.2f}"
+                )
+            if override_capped:
+                steps.append(f"  ⚠️ Combined overrides capped at ×{override_factor:.2f}")
+
+        steps.append(f"🔒 Final multiplier: {final_mult:.2f}× (bounds: {MIN_MULTIPLIER}–{MAX_MULTIPLIER})")
+
+        if duration_discount < 1.0:
+            discount_pct = int((1 - duration_discount) * 100)
+            steps.append(f"⏱️ Duration discount ({duration}hrs): {discount_pct}% off")
+
+        steps.append(f"💰 Effective rate: ₹{effective_hourly:.2f}/hr × {duration}hrs = ₹{total:.2f}")
+
+        return steps
