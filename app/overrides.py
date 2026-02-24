@@ -33,6 +33,7 @@ OVERRIDE_FACTORS = {
     "festival": 1.40,
     "holiday": 1.30,
     "holiday_eve": 1.15,
+    "friday_evening": 1.20,
     "rain_likely": 0.85,
     "heavy_rain_likely": 0.70,
     "heatwave_likely": 0.90,
@@ -122,7 +123,18 @@ class OverrideDetector:
                     effect="surge",
                 ))
 
-        # ── 4. Weather prediction (from data probabilities) ──
+        # ── 4. Friday evening pickup surge ──
+        hour = rental_datetime.hour if isinstance(rental_datetime, datetime) else 17
+        if d.weekday() == 4 and hour >= 17:  # Friday 5 PM+
+            overrides.append(DetectedOverride(
+                name="Friday Evening Pickup",
+                factor=OVERRIDE_FACTORS["friday_evening"],
+                reason="Friday evening is a peak pickup window — weekend getaway demand",
+                confidence="high",
+                effect="surge",
+            ))
+
+        # ── 5. Weather prediction (from data probabilities) ──
         month_str = str(month)
         if month_str in self.weather_by_month:
             weather_probs = self.weather_by_month[month_str]
