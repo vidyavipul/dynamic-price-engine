@@ -1,8 +1,8 @@
 """
-Tests for the Price Engine.
+Tests for the Price Engine with auto-detected overrides.
 
 Validates pricing calculations, edge cases, multiplier bounds,
-override stacking, duration discounts, and input validation.
+auto-override detection, duration discounts, and input validation.
 """
 
 import pytest
@@ -62,14 +62,13 @@ class TestDemandBasedPricing:
     """Below-baseline demand should give discounts, above-baseline should surge."""
 
     def test_low_demand_discount(self, engine):
-        """Late night monsoon weekday should have multiplier < 1.0 (discount)."""
+        """Late night monsoon weekday should have low multiplier."""
         result = engine.calculate_price(
             datetime(2025, 7, 15, 3, 0),  # Tuesday 3AM July
             "standard_bike", 4
         )
-        base_price = VEHICLE_BASE_RATES[VehicleType.STANDARD_BIKE] * 4
-        assert result.final_price < base_price, \
-            f"Low demand price ({result.final_price}) should be < base ({base_price})"
+        # Monsoon late night = low demand
+        assert result.surge_multiplier < 1.0
 
     def test_high_demand_surge(self, engine):
         """Saturday morning in festive season should have multiplier > 1.0."""
@@ -97,20 +96,18 @@ class TestMultiplierBounds:
     """Final multiplier must stay within [MIN, MAX] bounds."""
 
     def test_multiplier_never_below_min(self, engine):
-        # Worst case scenario
+        # Worst case: monsoon late night with potential rain discount
         result = engine.calculate_price(
             datetime(2025, 7, 15, 3, 0),  # Tue 3AM monsoon
             "scooter", 1,
-            active_overrides=["rain", "heavy_rain"],
         )
         assert result.final_multiplier >= MIN_MULTIPLIER
 
     def test_multiplier_never_above_max(self, engine):
-        # Best case with all surge overrides
+        # Best case: holiday in festive season
         result = engine.calculate_price(
-            datetime(2025, 10, 18, 9, 0),  # Sat morning festive
+            datetime(2025, 10, 20, 9, 0),  # Diwali morning
             "super_premium", 8,
-            active_overrides=["long_weekend", "festival", "major_event"],
         )
         assert result.final_multiplier <= MAX_MULTIPLIER
 
@@ -119,7 +116,6 @@ class TestMultiplierBounds:
         result = engine.calculate_price(
             datetime(2025, 7, 15, 3, 0),
             "scooter", 1,
-            active_overrides=["rain", "heavy_rain"],
         )
         assert result.final_price > 0
         min_expected = VEHICLE_BASE_RATES[VehicleType.SCOOTER] * MIN_MULTIPLIER * 1
@@ -127,58 +123,80 @@ class TestMultiplierBounds:
 
 
 # ──────────────────────────────────────────────
-# Override Effects
+# Auto-Detected Overrides
 # ──────────────────────────────────────────────
 
-class TestOverrideEffects:
-    """Overrides should correctly adjust price."""
+class TestAutoDetectedOverrides:
+    """Overrides should be auto-detected from the rental datetime."""
 
-    def test_rain_decreases_price(self, engine):
-        """Rain should be a discount for bike rentals."""
-        no_rain = engine.calculate_price(
-            datetime(2025, 5, 15, 9, 0), "standard_bike", 8
-        )
-        with_rain = engine.calculate_price(
-            datetime(2025, 5, 15, 9, 0), "standard_bike", 8,
-            active_overrides=["rain"],
-        )
-        assert with_rain.final_price < no_rain.final_price, \
-            f"Rain price ({with_rain.final_price}) should be < no rain ({no_rain.final_price})"
-
-    def test_festival_increases_price(self, engine):
-        no_festival = engine.calculate_price(
-            datetime(2025, 5, 15, 9, 0), "standard_bike", 8
-        )
-        with_festival = engine.calculate_price(
-            datetime(2025, 5, 15, 9, 0), "standard_bike", 8,
-            active_overrides=["festival"],
-        )
-        assert with_festival.final_price > no_festival.final_price
-
-    def test_conflicting_overrides_both_apply(self, engine):
-        """Rain + Festival should both apply multiplicatively."""
+    def test_holiday_auto_detected(self, engine):
+        """Diwali should auto-detect a festival override."""
         result = engine.calculate_price(
-            datetime(2025, 5, 15, 9, 0), "standard_bike", 8,
-            active_overrides=["rain", "festival"],
+            datetime(2025, 10, 20, 9, 0),  # Diwali
+            "standard_bike", 8
         )
-        assert len(result.overrides_applied) == 2
+        names = [o["name"] for o in result.overrides_detected]
+        assert any("diwali" in n.lower() or "festival" in n.lower() for n in names), \
+            f"Expected Diwali override in {names}"
 
-    def test_override_stacking_cap(self, engine):
-        """Multiple surge overrides should be capped."""
+    def test_monsoon_rain_auto_detected(self, engine):
+        """July bookings should auto-detect rain from weather probabilities."""
         result = engine.calculate_price(
-            datetime(2025, 10, 18, 9, 0), "standard_bike", 8,
-            active_overrides=["long_weekend", "festival", "major_event"],
+            datetime(2025, 7, 15, 9, 0),  # July (monsoon)
+            "standard_bike", 8
         )
-        # Combined override: 1.5 × 1.4 × 1.3 = 2.73 → should be capped at 2.0
-        assert result.override_factor <= 2.0
+        names = [o["name"] for o in result.overrides_detected]
+        # Either rain or heavy rain should be detected for monsoon months
+        assert any("rain" in n.lower() for n in names), \
+            f"Expected rain override in July. Got: {names}"
 
-    def test_unknown_override_ignored(self, engine):
-        """Unknown overrides should be silently ignored."""
+    def test_rain_is_discount(self, engine):
+        """Rain override should be a discount (factor < 1.0)."""
         result = engine.calculate_price(
-            datetime(2025, 5, 15, 9, 0), "standard_bike", 8,
-            active_overrides=["unknown_override"],
+            datetime(2025, 7, 15, 9, 0),
+            "standard_bike", 8
         )
-        assert result.override_factor == 1.0  # No effect
+        rain_overrides = [o for o in result.overrides_detected if "rain" in o["name"].lower()]
+        for o in rain_overrides:
+            assert o["factor"] < 1.0, f"Rain should be discount, got factor {o['factor']}"
+            assert o["effect"] == "discount"
+
+    def test_winter_no_rain_detected(self, engine):
+        """December should NOT auto-detect rain (dry winter)."""
+        result = engine.calculate_price(
+            datetime(2025, 12, 10, 9, 0),  # Dec weekday
+            "standard_bike", 8
+        )
+        names = [o["name"] for o in result.overrides_detected]
+        assert not any("rain" in n.lower() for n in names), \
+            f"Should not detect rain in December. Got: {names}"
+
+    def test_no_manual_overrides_param(self, engine):
+        """Engine should not accept active_overrides parameter anymore."""
+        import inspect
+        sig = inspect.signature(engine.calculate_price)
+        assert "active_overrides" not in sig.parameters, \
+            "calculate_price should no longer have active_overrides parameter"
+
+    def test_regular_weekday_no_surge_overrides(self, engine):
+        """A normal February weekday should have no surge overrides."""
+        result = engine.calculate_price(
+            datetime(2025, 2, 12, 9, 0),  # Wed Feb
+            "standard_bike", 8
+        )
+        surge_overrides = [o for o in result.overrides_detected if o["effect"] == "surge"]
+        assert len(surge_overrides) == 0, \
+            f"Regular weekday should have no surge overrides. Got: {surge_overrides}"
+
+    def test_override_confidence_present(self, engine):
+        """All auto-detected overrides should have confidence level."""
+        result = engine.calculate_price(
+            datetime(2025, 10, 20, 9, 0),  # Diwali
+            "standard_bike", 8
+        )
+        for o in result.overrides_detected:
+            assert o["confidence"] in ("high", "medium", "low"), \
+                f"Override missing confidence: {o}"
 
 
 # ──────────────────────────────────────────────
@@ -279,3 +297,11 @@ class TestExplanation:
             datetime(2025, 5, 15, 9, 0), "premium_bike", 8
         )
         assert any("Premium" in step for step in result.explanation)
+
+    def test_explanation_shows_auto_detected(self, engine):
+        """When overrides are detected, explanation should mention auto-detection."""
+        result = engine.calculate_price(
+            datetime(2025, 10, 20, 9, 0),  # Diwali
+            "standard_bike", 8
+        )
+        assert any("auto-detected" in step.lower() or "Auto-detected" in step for step in result.explanation)
