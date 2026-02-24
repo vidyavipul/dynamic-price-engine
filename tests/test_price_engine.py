@@ -198,6 +198,37 @@ class TestAutoDetectedOverrides:
             assert o["confidence"] in ("high", "medium", "low"), \
                 f"Override missing confidence: {o}"
 
+    def test_friday_evening_detected(self, engine):
+        """Friday 6 PM should auto-detect a Friday evening pickup surge."""
+        result = engine.calculate_price(
+            datetime(2025, 5, 16, 18, 0),  # Friday 6 PM
+            "standard_bike", 8
+        )
+        names = [o["name"] for o in result.overrides_detected]
+        assert any("friday" in n.lower() for n in names), \
+            f"Expected Friday evening override. Got: {names}"
+
+    def test_friday_morning_not_detected(self, engine):
+        """Friday 9 AM should NOT trigger Friday evening override."""
+        result = engine.calculate_price(
+            datetime(2025, 5, 16, 9, 0),  # Friday 9 AM
+            "standard_bike", 8
+        )
+        names = [o["name"] for o in result.overrides_detected]
+        assert not any("friday" in n.lower() for n in names), \
+            f"Friday morning should NOT trigger evening override. Got: {names}"
+
+    def test_friday_evening_costs_more_than_morning(self, engine):
+        """Friday 6 PM should cost more than Friday 9 AM (same day)."""
+        evening = engine.calculate_price(
+            datetime(2025, 5, 16, 18, 0), "standard_bike", 8
+        )
+        morning = engine.calculate_price(
+            datetime(2025, 5, 16, 9, 0), "standard_bike", 8
+        )
+        assert evening.final_price > morning.final_price, \
+            f"Friday evening (₹{evening.final_price}) should > morning (₹{morning.final_price})"
+
 
 # ──────────────────────────────────────────────
 # Duration Discounts
