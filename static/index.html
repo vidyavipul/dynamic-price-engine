@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Pricing Engine — Bike Rental</title>
+    <meta name="description" content="Rule-based dynamic pricing engine for self-drive bike rentals. Compute demand-aware pricing with real-time explanations.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">⚡</span>
+                    <div>
+                        <h1>Dynamic Pricing Engine</h1>
+                        <p class="tagline">Self-Drive Bike Rental • Data-Driven Demand Pricing</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Input Section -->
+            <section class="input-section">
+                <h2 class="section-title">Configure Rental</h2>
+
+                <!-- Vehicle Selector -->
+                <div class="form-group">
+                    <label class="form-label">Vehicle Type</label>
+                    <div class="vehicle-grid" id="vehicleGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- DateTime & Duration Row -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label" for="rentalDatetime">Rental Start</label>
+                        <input type="datetime-local" id="rentalDatetime" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="durationHours">Duration (hours)</label>
+                        <select id="durationHours" class="form-input">
+                            <option value="1">1 hour</option>
+                            <option value="2">2 hours</option>
+                            <option value="4">4 hours</option>
+                            <option value="6">6 hours</option>
+                            <option value="8" selected>8 hours (Day Trip)</option>
+                            <option value="12">12 hours</option>
+                            <option value="24">24 hours (1 Day)</option>
+                            <option value="48">48 hours (2 Days)</option>
+                            <option value="72">72 hours (3 Days)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Overrides -->
+                <div class="form-group">
+                    <label class="form-label">Contextual Overrides</label>
+                    <div class="overrides-grid" id="overridesGrid">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Calculate Button -->
+                <button class="btn-calculate" id="calculateBtn" onclick="calculatePrice()">
+                    <span class="btn-icon">💰</span>
+                    Calculate Dynamic Price
+                </button>
+            </section>
+
+            <!-- Results Section -->
+            <section class="results-section" id="resultsSection" style="display: none;">
+
+                <!-- Price Hero Card -->
+                <div class="price-hero" id="priceHero">
+                    <div class="price-label">Total Rental Price</div>
+                    <div class="price-value" id="priceValue">₹0</div>
+                    <div class="price-meta" id="priceMeta"></div>
+                </div>
+
+                <!-- Stats Row -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-label">Surge Multiplier</div>
+                        <div class="stat-value" id="surgeValue">1.00×</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Demand Score</div>
+                        <div class="stat-value" id="demandScore">0.00</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Demand Zone</div>
+                        <div class="stat-value" id="demandZone">—</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Effective Rate</div>
+                        <div class="stat-value" id="effectiveRate">₹0/hr</div>
+                    </div>
+                </div>
+
+                <!-- Demand Gauge -->
+                <div class="gauge-card">
+                    <h3 class="card-title">Demand Intensity</h3>
+                    <div class="gauge-container">
+                        <div class="gauge-bar">
+                            <div class="gauge-fill" id="gaugeFill"></div>
+                            <div class="gauge-marker" id="gaugeMarker"></div>
+                        </div>
+                        <div class="gauge-labels">
+                            <span>🔵 Dead</span>
+                            <span>🟢 Low</span>
+                            <span>⚪ Normal</span>
+                            <span>🟡 High</span>
+                            <span>🔴 Surge</span>
+                        </div>
+                    </div>
+                    <div class="gauge-detail" id="gaugeDetail"></div>
+                </div>
+
+                <!-- Explanation Steps -->
+                <div class="explanation-card">
+                    <h3 class="card-title">Pricing Breakdown</h3>
+                    <div class="explanation-steps" id="explanationSteps">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+
+                <!-- Warnings -->
+                <div class="warnings-card" id="warningsCard" style="display: none;">
+                    <div class="warnings-list" id="warningsList"></div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <p>Proof-of-Concept • Rule-Based Dynamic Pricing • Data-Derived Demand Profiles</p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
