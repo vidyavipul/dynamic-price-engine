@@ -1,8 +1,8 @@
 """
 Price Engine — Computes dynamic rental price.
 
-Maps demand score → surge multiplier, applies overrides, clamps to bounds,
-applies duration discounts, and returns the final price with full breakdown.
+Maps demand score → surge multiplier, auto-detects overrides from data,
+clamps to bounds, applies duration discounts, returns full breakdown.
 """
 
 from dataclasses import dataclass, field
@@ -15,7 +15,7 @@ from app.config import (
     DURATION_DISCOUNT_TIERS, LOW_CONFIDENCE_DAYS,
 )
 from app.demand_model import DemandModel, DemandResult
-from app.overrides import compute_combined_override
+from app.overrides import OverrideDetector
 
 
 @dataclass
@@ -24,7 +24,7 @@ class PriceResult:
     # Final output
     final_price: float
     hourly_rate: float
-    effective_hourly_rate: float  # after surge + duration discount
+    effective_hourly_rate: float
 
     # Inputs
     vehicle_type: str
@@ -42,8 +42,8 @@ class PriceResult:
     final_multiplier: float
     duration_discount: float
 
-    # Metadata
-    overrides_applied: List[Dict]
+    # Auto-detected overrides
+    overrides_detected: List[Dict]
     override_was_capped: bool
     warnings: List[str] = field(default_factory=list)
 
@@ -55,28 +55,32 @@ class PriceEngine:
     """
     Dynamic pricing engine for bike rentals.
 
-    Takes a rental datetime, vehicle type, duration, and optional overrides.
-    Returns a fully explainable price calculation.
+    Overrides are auto-detected from:
+    - Holiday calendar (festivals, public holidays)
+    - Day classification (long weekends, bridge days)
+    - Weather probabilities from historical data
     """
 
-    def __init__(self, demand_model: Optional[DemandModel] = None):
+    def __init__(self, demand_model: Optional[DemandModel] = None,
+                 override_detector: Optional[OverrideDetector] = None):
         self.demand_model = demand_model or DemandModel()
+        self.override_detector = override_detector or OverrideDetector()
 
     def calculate_price(
         self,
         rental_datetime: datetime,
         vehicle_type: str,
         duration_hours: int,
-        active_overrides: Optional[List[str]] = None,
     ) -> PriceResult:
         """
         Calculate the dynamic price for a rental.
+
+        Overrides are auto-detected internally — no manual input needed.
 
         Args:
             rental_datetime: When the rental starts
             vehicle_type: Vehicle category (scooter, standard_bike, etc.)
             duration_hours: Rental duration in hours
-            active_overrides: List of override names (rain, festival, etc.)
 
         Returns:
             PriceResult with full breakdown
@@ -124,10 +128,9 @@ class PriceEngine:
         # ── Step 2: Base surge multiplier from demand ──
         surge_multiplier = MIN_MULTIPLIER + demand_result.score * (MAX_MULTIPLIER - MIN_MULTIPLIER)
 
-        # ── Step 3: Apply overrides ──
-        active_overrides = active_overrides or []
-        override_factor, override_breakdown, override_capped = compute_combined_override(
-            active_overrides
+        # ── Step 3: Auto-detect overrides ──
+        override_factor, detected_overrides, override_capped = (
+            self.override_detector.detect_overrides(rental_datetime, demand_result.day_type)
         )
 
         # ── Step 4: Final multiplier (clamped) ──
@@ -149,12 +152,12 @@ class PriceEngine:
         # ── Build explanation ──
         explanation = self._build_explanation(
             v_type, base_rate, duration_hours, demand_result,
-            surge_multiplier, override_factor, override_breakdown,
+            surge_multiplier, override_factor, detected_overrides,
             override_capped, final_multiplier, duration_discount,
             effective_hourly, total_price
         )
 
-        # ── Build demand dict for result ──
+        # ── Build demand dict ──
         demand_dict = {
             "score": demand_result.score,
             "zone": demand_result.zone.name,
@@ -168,6 +171,18 @@ class PriceEngine:
             "is_holiday": demand_result.is_holiday,
             "holiday_name": demand_result.holiday_name,
         }
+
+        # ── Build override dicts ──
+        override_dicts = [
+            {
+                "name": o.name,
+                "factor": o.factor,
+                "reason": o.reason,
+                "confidence": o.confidence,
+                "effect": o.effect,
+            }
+            for o in detected_overrides
+        ]
 
         return PriceResult(
             final_price=round(total_price, 2),
@@ -183,7 +198,7 @@ class PriceEngine:
             override_factor=round(override_factor, 4),
             final_multiplier=round(final_multiplier, 4),
             duration_discount=duration_discount,
-            overrides_applied=override_breakdown,
+            overrides_detected=override_dicts,
             override_was_capped=override_capped,
             warnings=warnings,
             explanation=explanation,
@@ -191,7 +206,7 @@ class PriceEngine:
 
     def _build_explanation(
         self, v_type, base_rate, duration, demand, surge,
-        override_factor, override_breakdown, override_capped,
+        override_factor, detected_overrides, override_capped,
         final_mult, duration_discount, effective_hourly, total
     ) -> List[str]:
         """Build step-by-step human-readable pricing explanation."""
@@ -227,15 +242,20 @@ class PriceEngine:
 
         steps.append(f"📈 Surge multiplier: {surge:.2f}×")
 
-        # Overrides
-        if override_breakdown:
-            for ob in override_breakdown:
-                direction = "↓" if ob["effect"] == "discount" else "↑"
+        # Auto-detected overrides
+        if detected_overrides:
+            steps.append(f"🔍 Auto-detected {len(detected_overrides)} override(s):")
+            for o in detected_overrides:
+                direction = "↓" if o.effect == "discount" else "↑"
+                conf_badge = {"high": "●", "medium": "◐", "low": "○"}[o.confidence]
                 steps.append(
-                    f"  {direction} {ob['description']}: ×{ob['factor']:.2f}"
+                    f"  {direction} {o.name}: ×{o.factor:.2f} "
+                    f"[{conf_badge} {o.confidence}] — {o.reason}"
                 )
             if override_capped:
-                steps.append(f"  ⚠️ Combined overrides capped at ×{override_factor:.2f}")
+                steps.append(f"  ⚠️ Combined override capped at ×{override_factor:.2f}")
+        else:
+            steps.append("🔍 No contextual overrides detected for this date")
 
         steps.append(f"🔒 Final multiplier: {final_mult:.2f}× (bounds: {MIN_MULTIPLIER}–{MAX_MULTIPLIER})")
 
