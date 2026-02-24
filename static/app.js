@@ -1,13 +1,12 @@
 /**
  * Dynamic Pricing Engine — Frontend Logic
  *
- * Handles vehicle selection, override toggles, API calls,
- * and result rendering with animations.
+ * Handles vehicle selection, API calls, and result rendering.
+ * Overrides are auto-detected server-side — no manual toggles.
  */
 
 // ── State ──
 let selectedVehicle = 'standard_bike';
-let activeOverrides = new Set();
 let vehiclesData = [];
 
 // ── Vehicle emoji mapping ──
@@ -18,41 +17,20 @@ const VEHICLE_EMOJIS = {
     super_premium: '🔥',
 };
 
-const OVERRIDE_EMOJIS = {
-    long_weekend: '🗓️',
-    festival: '🎉',
-    rain: '🌧️',
-    heavy_rain: '⛈️',
-    major_event: '🎵',
-    heatwave: '🌡️',
-};
-
-const OVERRIDE_FACTORS = {
-    long_weekend: 1.5,
-    festival: 1.4,
-    rain: 0.8,
-    heavy_rain: 0.65,
-    major_event: 1.3,
-    heatwave: 0.9,
-};
-
 // ── Initialize ──
 document.addEventListener('DOMContentLoaded', async () => {
     setDefaultDatetime();
     await loadVehicles();
-    await loadOverrides();
 });
 
 function setDefaultDatetime() {
     const input = document.getElementById('rentalDatetime');
-    // Default to next Saturday 9 AM
     const now = new Date();
     const daysUntilSat = (6 - now.getDay() + 7) % 7 || 7;
     const nextSat = new Date(now);
     nextSat.setDate(now.getDate() + daysUntilSat);
     nextSat.setHours(9, 0, 0, 0);
 
-    // Format for datetime-local input
     const pad = n => String(n).padStart(2, '0');
     input.value = `${nextSat.getFullYear()}-${pad(nextSat.getMonth() + 1)}-${pad(nextSat.getDate())}T${pad(nextSat.getHours())}:${pad(nextSat.getMinutes())}`;
 }
@@ -64,7 +42,6 @@ async function loadVehicles() {
         vehiclesData = data.vehicles;
         renderVehicles(vehiclesData);
     } catch (err) {
-        // Fallback
         vehiclesData = [
             { type: 'scooter', name: 'Scooter (Activa, Jupiter)', base_rate: 60 },
             { type: 'standard_bike', name: 'Standard Bike (Pulsar, FZ)', base_rate: 80 },
@@ -72,25 +49,6 @@ async function loadVehicles() {
             { type: 'super_premium', name: 'Super Premium (Himalayan, KTM 390)', base_rate: 250 },
         ];
         renderVehicles(vehiclesData);
-    }
-}
-
-async function loadOverrides() {
-    try {
-        const resp = await fetch('/api/overrides');
-        const data = await resp.json();
-        renderOverrides(data.overrides);
-    } catch (err) {
-        // Fallback
-        const fallback = [
-            { type: 'long_weekend', description: 'Long Weekend (3-4 day stretch)' },
-            { type: 'festival', description: 'Festival / Public Holiday' },
-            { type: 'rain', description: 'Rain (reduces rental demand)' },
-            { type: 'heavy_rain', description: 'Heavy Rain / Storm Warning' },
-            { type: 'major_event', description: 'Major Event (concert, match)' },
-            { type: 'heatwave', description: 'Heatwave Advisory' },
-        ];
-        renderOverrides(fallback);
     }
 }
 
@@ -113,43 +71,6 @@ function selectVehicle(type) {
     document.querySelectorAll('.vehicle-card').forEach(card => {
         card.classList.toggle('selected', card.id === `vehicle-${type}`);
     });
-}
-
-function renderOverrides(overrides) {
-    const grid = document.getElementById('overridesGrid');
-    grid.innerHTML = overrides.map(o => {
-        const factor = OVERRIDE_FACTORS[o.type] || 1.0;
-        const isDiscount = factor < 1.0;
-        const factorLabel = isDiscount
-            ? `${Math.round((1 - factor) * 100)}% ↓`
-            : `${Math.round((factor - 1) * 100)}% ↑`;
-
-        return `
-            <div class="override-toggle ${isDiscount ? '' : ''}"
-                 onclick="toggleOverride('${o.type}', this)"
-                 data-type="${o.type}"
-                 data-discount="${isDiscount}">
-                <div class="override-checkbox"></div>
-                <span class="override-label">${OVERRIDE_EMOJIS[o.type] || ''} ${o.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}</span>
-                <span class="override-factor">${factorLabel}</span>
-            </div>
-        `;
-    }).join('');
-}
-
-function toggleOverride(type, element) {
-    const isDiscount = element.dataset.discount === 'true';
-    if (activeOverrides.has(type)) {
-        activeOverrides.delete(type);
-        element.classList.remove('active', 'discount');
-    } else {
-        activeOverrides.add(type);
-        element.classList.add('active');
-        if (isDiscount) element.classList.add('discount');
-    }
-    // Update checkbox
-    const checkbox = element.querySelector('.override-checkbox');
-    checkbox.textContent = activeOverrides.has(type) ? '✓' : '';
 }
 
 // ── Calculate Price ──
@@ -175,7 +96,6 @@ async function calculatePrice() {
                 rental_datetime: datetime + ':00',
                 vehicle_type: selectedVehicle,
                 duration_hours: duration,
-                overrides: Array.from(activeOverrides),
             }),
         });
 
@@ -237,8 +157,6 @@ function renderResults(result) {
     const fillPercent = result.demand.score * 100;
     const marker = document.getElementById('gaugeMarker');
     marker.style.left = `${fillPercent}%`;
-
-    // Zone color on marker
     marker.style.background = result.demand.zone_color || '#fff';
 
     // Gauge detail
@@ -246,6 +164,31 @@ function renderResults(result) {
         `<strong>${result.demand.zone_emoji} ${result.demand.zone}</strong> — ${result.demand.zone_description}` +
         `<br><span style="color: var(--text-muted);">Day: ${result.demand.day_type.replace(/_/g, ' ')} (${result.demand.day_type_score.toFixed(2)}) • ` +
         `Season: ${result.demand.season_score.toFixed(2)} • Time: ${result.demand.time_slot_score.toFixed(2)}</span>`;
+
+    // Auto-detected overrides
+    const overridesCard = document.getElementById('overridesCard');
+    if (result.overrides_detected && result.overrides_detected.length > 0) {
+        overridesCard.style.display = 'block';
+        const overridesList = document.getElementById('overridesList');
+        overridesList.innerHTML = result.overrides_detected.map(o => {
+            const isDiscount = o.effect === 'discount';
+            const arrow = isDiscount ? '↓' : '↑';
+            const colorClass = isDiscount ? 'override-discount' : 'override-surge';
+            const confDot = { high: '●', medium: '◐', low: '○' }[o.confidence] || '○';
+
+            return `
+                <div class="override-item ${colorClass}">
+                    <div class="override-item-header">
+                        <span class="override-item-name">${arrow} ${o.name}</span>
+                        <span class="override-item-factor">×${o.factor.toFixed(2)}</span>
+                    </div>
+                    <div class="override-item-reason">${confDot} ${o.confidence} confidence — ${o.reason}</div>
+                </div>
+            `;
+        }).join('');
+    } else {
+        overridesCard.style.display = 'none';
+    }
 
     // Explanation steps
     const stepsContainer = document.getElementById('explanationSteps');
