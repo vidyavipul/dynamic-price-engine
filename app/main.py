@@ -2,6 +2,7 @@
 FastAPI Server — Dynamic Pricing Engine.
 
 Serves the dashboard UI and exposes the pricing API.
+Overrides are auto-detected internally — no manual input needed.
 """
 
 import os
@@ -16,7 +17,6 @@ from pydantic import BaseModel, Field
 from app.config import VehicleType, VEHICLE_BASE_RATES, VEHICLE_DISPLAY_NAMES
 from app.demand_model import DemandModel
 from app.price_engine import PriceEngine
-from app.overrides import OverrideType, OVERRIDE_DESCRIPTIONS
 
 # ── App setup ──
 app = FastAPI(
@@ -52,22 +52,12 @@ class PriceRequest(BaseModel):
         description="Rental duration in hours (minimum 1)",
         examples=[8],
     )
-    overrides: Optional[List[str]] = Field(
-        default=[],
-        description="Active contextual overrides",
-        examples=[["rain", "festival"]],
-    )
 
 
 class VehicleInfo(BaseModel):
     type: str
     name: str
     base_rate: float
-
-
-class OverrideInfo(BaseModel):
-    type: str
-    description: str
 
 
 # ── Routes ──
@@ -92,23 +82,15 @@ async def get_vehicles():
     return {"vehicles": [v.model_dump() for v in vehicles]}
 
 
-@app.get("/api/overrides")
-async def get_overrides():
-    """Return list of available overrides."""
-    overrides = [
-        OverrideInfo(type=o.value, description=OVERRIDE_DESCRIPTIONS[o])
-        for o in OverrideType
-    ]
-    return {"overrides": [o.model_dump() for o in overrides]}
-
-
 @app.post("/api/price")
 async def calculate_price(request: PriceRequest):
     """
     Calculate dynamic price for a bike rental.
 
-    Takes rental datetime, vehicle type, duration, and optional overrides.
-    Returns the full price breakdown with demand analysis and explanation.
+    Overrides are auto-detected from the rental datetime using:
+    - Holiday calendar (festivals, public holidays)
+    - Day classification (long weekends, holiday eves)
+    - Weather probabilities from historical booking data
     """
     # Parse datetime
     try:
@@ -120,13 +102,12 @@ async def calculate_price(request: PriceRequest):
                    f"Use ISO format: YYYY-MM-DDTHH:MM:SS"
         )
 
-    # Calculate price
+    # Calculate price (overrides auto-detected internally)
     try:
         result = price_engine.calculate_price(
             rental_datetime=rental_dt,
             vehicle_type=request.vehicle_type,
             duration_hours=request.duration_hours,
-            active_overrides=request.overrides,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
