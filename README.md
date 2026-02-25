@@ -9,8 +9,8 @@
 <h1 align="center">🏍️ Dynamic Pricing Engine</h1>
 
 <p align="center">
-  <strong>A rule-based, data-driven dynamic pricing engine for self-drive bike rentals.</strong><br>
-  Adjusts rental prices in real-time based on demand patterns, weather, holidays, and seasonal trends.
+  <strong>A data-driven dynamic pricing engine for self-drive bike rentals.</strong><br>
+  Adjusts rental prices based on demand patterns, weather, holidays, and seasonal trends.
 </p>
 
 <p align="center">
@@ -278,5 +278,5 @@ MIT
 ---
 
 <p align="center">
-  Built with ❤️ for learning dynamic pricing systems
+  Built with curiosity to understand dynamic pricing systems.
 </p>
