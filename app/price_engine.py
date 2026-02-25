@@ -13,6 +13,7 @@ from app.config import (
     VEHICLE_BASE_RATES, VEHICLE_DISPLAY_NAMES, VehicleType,
     MIN_MULTIPLIER, MAX_MULTIPLIER,
     DURATION_DISCOUNT_TIERS, LOW_CONFIDENCE_DAYS,
+    INDIAN_HOLIDAYS,
 )
 from app.demand_model import DemandModel, DemandResult
 from app.overrides import OverrideDetector
@@ -106,21 +107,39 @@ class PriceEngine:
                 f"Minimum rental: 1 hour."
             )
 
-        # Check for past dates
+        # Check for past dates (allowed for historical reference)
         now = datetime.now()
         if rental_datetime < now:
             warnings.append(
-                f"⚠️ Rental date is in the past ({rental_datetime.strftime('%Y-%m-%d %H:%M')}). "
-                f"Pricing computed for historical reference."
+                f"📅 This date is in the past ({rental_datetime.strftime('%Y-%m-%d %H:%M')}). "
+                f"Price shown for historical reference only."
             )
 
-        # Check for far-future dates
+        # Smart confidence for far-future dates
         days_ahead = (rental_datetime.date() - now.date()).days
         if days_ahead > LOW_CONFIDENCE_DAYS:
-            warnings.append(
-                f"⚠️ Booking is {days_ahead} days ahead (>{LOW_CONFIDENCE_DAYS} days). "
-                f"Demand prediction confidence is lower for distant dates."
-            )
+            d = rental_datetime.date()
+            is_holiday = d in INDIAN_HOLIDAYS
+            is_weekend = d.weekday() >= 5  # Saturday or Sunday
+
+            if is_holiday:
+                holiday_name = INDIAN_HOLIDAYS[d]
+                warnings.append(
+                    f"✅ Booking is {days_ahead} days ahead but {holiday_name} is "
+                    f"calendar-certain — high confidence pricing."
+                )
+            elif is_weekend:
+                warnings.append(
+                    f"📅 Booking is {days_ahead} days ahead (>{LOW_CONFIDENCE_DAYS} days). "
+                    f"Weekend demand is predictable but seasonal factors may vary — "
+                    f"medium confidence."
+                )
+            else:
+                warnings.append(
+                    f"⚠️ Booking is {days_ahead} days ahead (>{LOW_CONFIDENCE_DAYS} days). "
+                    f"Demand prediction confidence is lower for distant weekdays — "
+                    f"weather and local events are uncertain."
+                )
 
         # ── Step 1: Demand estimation ──
         demand_result = self.demand_model.estimate_demand(rental_datetime)
