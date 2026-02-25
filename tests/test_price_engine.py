@@ -295,19 +295,39 @@ class TestInputValidation:
 class TestWarnings:
     """Edge cases should produce appropriate warnings."""
 
-    def test_past_date_warning(self, engine):
+    def test_past_date_historical_note(self, engine):
+        """Past date should show historical reference note."""
         result = engine.calculate_price(
             datetime(2020, 1, 1, 9, 0),  # Far in the past
             "standard_bike", 8
         )
-        assert any("past" in w.lower() for w in result.warnings)
+        assert any("historical reference" in w.lower() for w in result.warnings)
 
-    def test_far_future_warning(self, engine):
+    def test_far_future_weekday_low_confidence(self, engine):
+        """Regular weekday >90 days out should get low confidence warning."""
         result = engine.calculate_price(
-            datetime(2030, 1, 1, 9, 0),  # Far in the future
+            datetime(2030, 3, 6, 9, 0),  # Far future Wednesday
             "standard_bike", 8
         )
-        assert any("confidence" in w.lower() for w in result.warnings)
+        assert any("lower" in w.lower() or "uncertain" in w.lower() for w in result.warnings)
+
+    def test_far_future_holiday_high_confidence(self, engine):
+        """Known holiday >90 days out should get HIGH confidence."""
+        result = engine.calculate_price(
+            datetime(2026, 10, 9, 9, 0),  # Diwali 2026 (>90 days from Feb 2026)
+            "standard_bike", 8
+        )
+        assert any("high confidence" in w.lower() or "calendar-certain" in w.lower() for w in result.warnings), \
+            f"Expected high confidence for Diwali 2026. Got: {result.warnings}"
+
+    def test_far_future_weekend_medium_confidence(self, engine):
+        """Weekend >90 days out should get medium confidence."""
+        result = engine.calculate_price(
+            datetime(2030, 3, 9, 9, 0),  # Far future Saturday
+            "standard_bike", 8
+        )
+        assert any("medium" in w.lower() for w in result.warnings), \
+            f"Expected medium confidence for far weekend. Got: {result.warnings}"
 
 
 # ──────────────────────────────────────────────
