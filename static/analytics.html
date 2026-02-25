@@ -97,48 +97,93 @@
             margin-right: 0.3rem;
         }
 
-        /* Top Slots */
-        .slot-item {
+        /* Day Type Ranking */
+        .rank-row {
             display: flex;
             align-items: center;
-            justify-content: space-between;
-            padding: 0.6rem 0.8rem;
-            border-radius: 10px;
-            margin-bottom: 0.4rem;
-            background: rgba(255, 255, 255, 0.03);
-            transition: background 0.2s;
+            gap: 0.6rem;
+            padding: 0.4rem 0;
         }
 
-        .slot-item:hover {
-            background: rgba(255, 255, 255, 0.06);
-        }
-
-        .slot-rank {
-            font-size: 0.8rem;
-            font-weight: 700;
+        .rank-label {
+            min-width: 110px;
+            font-size: 0.82rem;
+            font-weight: 500;
             color: var(--text-muted);
-            min-width: 30px;
+            text-align: right;
+            text-transform: capitalize;
         }
 
-        .slot-details {
+        .rank-bar-container {
             flex: 1;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            overflow: hidden;
         }
 
-        .slot-day-type {
+        .rank-bar {
+            height: 100%;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #fff;
+            transition: width 0.6s ease;
+        }
+
+        /* Monthly Trends */
+        .monthly-chart {
+            display: flex;
+            align-items: flex-end;
+            gap: 4px;
+            height: 180px;
+            padding-top: 1rem;
+        }
+
+        .month-col {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .month-bar-wrapper {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            height: 140px;
+        }
+
+        .month-bar {
+            width: 70%;
+            border-radius: 4px 4px 0 0;
+            transition: height 0.6s ease;
+            min-height: 2px;
+        }
+
+        .month-label {
+            font-size: 0.7rem;
             font-weight: 600;
-            font-size: 0.9rem;
-            color: var(--text-primary);
-        }
-
-        .slot-meta {
-            font-size: 0.78rem;
             color: var(--text-muted);
         }
 
-        .slot-bookings {
+        .month-value {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+        }
+
+        .month-tag {
+            font-size: 0.55rem;
             font-weight: 700;
-            font-size: 1rem;
-            color: var(--accent);
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-top: 2px;
         }
 
         /* Volatility bars */
@@ -318,13 +363,22 @@
                     <div id="weatherImpact"></div>
                 </div>
 
-                <!-- Top Demand Slots -->
+                <!-- Day Type Demand Ranking -->
                 <div class="analytics-card">
-                    <h3>🔥 Top Demand Slots</h3>
+                    <h3>🏷️ Demand by Day Type</h3>
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
-                        Highest avg bookings by day type × hour × month
+                        Normalized demand score by day classification
                     </p>
-                    <div id="topSlots"></div>
+                    <div id="dayTypeRanking"></div>
+                </div>
+
+                <!-- Monthly Seasonal Trends -->
+                <div class="analytics-card full-width">
+                    <h3>📅 Seasonal Monthly Trends</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                        Monthly demand patterns — peak season vs monsoon dip
+                    </p>
+                    <div id="monthlyTrends"></div>
                 </div>
 
                 <!-- Demand Volatility -->
@@ -379,7 +433,8 @@
         function renderAll(data) {
             renderStats(data.stats);
             renderWeatherImpact(data.weather_impact);
-            renderTopSlots(data.top_demand_slots);
+            renderDayTypeRanking(data.day_type);
+            renderMonthlyTrends(data.monthly);
             renderVolatility(data.demand_volatility);
             renderHeatmap(data.hour_by_dow);
         }
@@ -406,7 +461,7 @@
             for (const [weather, d] of sorted) {
                 const pct = (d.ratio_vs_clear / maxRatio) * 100;
                 const color = d.ratio_vs_clear >= 1.0 ? '#22c55e' :
-                              d.ratio_vs_clear >= 0.7 ? '#eab308' : '#ef4444';
+                    d.ratio_vs_clear >= 0.7 ? '#eab308' : '#ef4444';
                 const icon = WEATHER_ICONS[weather] || '🌤️';
                 const arrow = d.ratio_vs_clear > 1.0 ? '↑' : d.ratio_vs_clear < 1.0 ? '↓' : '=';
 
@@ -427,20 +482,66 @@
             container.innerHTML = html;
         }
 
-        function renderTopSlots(slots) {
-            const container = document.getElementById('topSlots');
-            const top10 = slots.slice(0, 10);
+        function renderDayTypeRanking(dayType) {
+            const container = document.getElementById('dayTypeRanking');
+            const sorted = Object.entries(dayType).sort((a, b) => b[1] - a[1]);
 
-            container.innerHTML = top10.map((slot, i) => `
-                <div class="slot-item">
-                    <div class="slot-rank">#${i + 1}</div>
-                    <div class="slot-details">
-                        <div class="slot-day-type">${slot.day_type.replace(/_/g, ' ')}</div>
-                        <div class="slot-meta">${String(slot.hour).padStart(2, '0')}:00 • ${MONTH_NAMES[slot.month]}</div>
+            const COLORS = [
+                '#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6',
+                '#8b5cf6', '#6366f1', '#64748b', '#475569'
+            ];
+
+            container.innerHTML = sorted.map(([type, score], i) => {
+                const pct = score * 100;
+                const label = type.replace(/_/g, ' ');
+                return `
+                    <div class="rank-row">
+                        <div class="rank-label">${label}</div>
+                        <div class="rank-bar-container">
+                            <div class="rank-bar" style="width: ${pct}%; background: ${COLORS[i]};">
+                                ${score.toFixed(2)}
+                            </div>
+                        </div>
                     </div>
-                    <div class="slot-bookings">${slot.avg_bookings}</div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
+        }
+
+        function renderMonthlyTrends(monthly) {
+            const container = document.getElementById('monthlyTrends');
+            const SEASONS = {
+                1: { tag: 'Winter', color: '#3b82f6' },
+                2: { tag: 'Winter', color: '#3b82f6' },
+                3: { tag: 'Spring', color: '#22c55e' },
+                4: { tag: 'Spring', color: '#22c55e' },
+                5: { tag: 'Summer', color: '#f97316' },
+                6: { tag: 'Monsoon', color: '#6366f1' },
+                7: { tag: 'Monsoon', color: '#6366f1' },
+                8: { tag: 'Monsoon', color: '#6366f1' },
+                9: { tag: 'Monsoon', color: '#6366f1' },
+                10: { tag: 'Festive', color: '#ef4444' },
+                11: { tag: 'Festive', color: '#ef4444' },
+                12: { tag: 'Winter', color: '#3b82f6' },
+            };
+
+            let html = '<div class="monthly-chart">';
+            for (let m = 1; m <= 12; m++) {
+                const score = monthly[String(m)] || 0;
+                const heightPct = score * 100;
+                const season = SEASONS[m];
+                html += `
+                    <div class="month-col">
+                        <div class="month-bar-wrapper">
+                            <div class="month-value">${score.toFixed(2)}</div>
+                            <div class="month-bar" style="height: ${heightPct}%; background: ${season.color};"></div>
+                        </div>
+                        <div class="month-label">${MONTH_NAMES[m]}</div>
+                        <div class="month-tag" style="background: ${season.color}22; color: ${season.color};">${season.tag}</div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            container.innerHTML = html;
         }
 
         function renderVolatility(vol) {
@@ -487,7 +588,7 @@
                 for (const h of hours) {
                     const val = dayData[String(h)] || 0;
                     const color = heatmapColor(val);
-                    html += `<td class="heatmap-cell" style="background: ${color};" title="${DAY_NAMES[dow]} ${String(h).padStart(2,'0')}:00 = ${val.toFixed(2)}">${val.toFixed(2)}</td>`;
+                    html += `<td class="heatmap-cell" style="background: ${color};" title="${DAY_NAMES[dow]} ${String(h).padStart(2, '0')}:00 = ${val.toFixed(2)}">${val.toFixed(2)}</td>`;
                 }
                 html += '</tr>';
             }
