@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analytics Dashboard — Dynamic Pricing Engine</title>
+    <meta name="description"
+        content="DuckDB-powered demand analytics: weather impact, top demand slots, volatility, and cross-dimensional insights.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Analytics-specific styles */
+        .analytics-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .analytics-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .analytics-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+        }
+
+        .analytics-card.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .analytics-card h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        /* Weather Impact Table */
+        .impact-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+
+        .impact-table th {
+            text-align: left;
+            padding: 0.6rem 0.8rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .impact-table td {
+            padding: 0.7rem 0.8rem;
+            font-size: 0.9rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .impact-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .impact-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .impact-bar-fill {
+            height: 8px;
+            border-radius: 4px;
+            min-width: 4px;
+            transition: width 0.6s ease;
+        }
+
+        .impact-bar-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            min-width: 45px;
+        }
+
+        .weather-icon {
+            font-size: 1.2rem;
+            margin-right: 0.3rem;
+        }
+
+        /* Top Slots */
+        .slot-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.6rem 0.8rem;
+            border-radius: 10px;
+            margin-bottom: 0.4rem;
+            background: rgba(255, 255, 255, 0.03);
+            transition: background 0.2s;
+        }
+
+        .slot-item:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .slot-rank {
+            font-size: 0.8rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            min-width: 30px;
+        }
+
+        .slot-details {
+            flex: 1;
+        }
+
+        .slot-day-type {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        .slot-meta {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+
+        .slot-bookings {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        /* Volatility bars */
+        .volatility-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 0;
+        }
+
+        .volatility-hour {
+            min-width: 45px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        .volatility-bar-container {
+            flex: 1;
+            height: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .volatility-bar-mean {
+            height: 100%;
+            border-radius: 4px;
+            opacity: 0.8;
+            transition: width 0.6s ease;
+        }
+
+        .volatility-bar-std {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
+
+        .volatility-value {
+            min-width: 55px;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        /* Stats summary */
+        .stats-summary {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .stat-chip {
+            background: rgba(139, 92, 246, 0.1);
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 12px;
+            font-size: 0.85rem;
+        }
+
+        .stat-chip strong {
+            color: var(--accent);
+        }
+
+        /* Nav link */
+        .nav-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1rem;
+            background: rgba(139, 92, 246, 0.15);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 10px;
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            background: rgba(139, 92, 246, 0.25);
+            transform: translateY(-1px);
+        }
+
+        /* Hour×Day heatmap */
+        .heatmap-container {
+            overflow-x: auto;
+        }
+
+        .heatmap-table {
+            border-collapse: separate;
+            border-spacing: 2px;
+            width: 100%;
+        }
+
+        .heatmap-table th {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            padding: 0.3rem;
+            text-align: center;
+        }
+
+        .heatmap-cell {
+            width: 28px;
+            height: 22px;
+            border-radius: 3px;
+            text-align: center;
+            font-size: 0;
+            transition: transform 0.15s;
+            cursor: default;
+        }
+
+        .heatmap-cell:hover {
+            transform: scale(1.8);
+            z-index: 2;
+            position: relative;
+            font-size: 0.55rem;
+            font-weight: 700;
+            color: #000;
+            line-height: 22px;
+        }
+
+        .heatmap-legend {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            margin-top: 0.8rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .legend-gradient {
+            width: 120px;
+            height: 10px;
+            border-radius: 5px;
+            background: linear-gradient(to right, #1a1a2e, #3b82f6, #22c55e, #eab308, #ef4444);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <span class="logo-icon">📊</span>
+                    <div>
+                        <h1>Demand Analytics</h1>
+                        <p class="tagline">DuckDB-Powered Insights • Cross-Dimensional Analysis</p>
+                    </div>
+                </div>
+                <a href="/" class="nav-link">⚡ Pricing Engine</a>
+            </div>
+        </header>
+
+        <main class="main-content" id="mainContent">
+            <div class="analytics-card full-width" style="margin-bottom: 1.5rem;">
+                <div class="stats-summary" id="statsSummary">
+                    <div class="stat-chip">Loading analytics...</div>
+                </div>
+            </div>
+
+            <div class="analytics-grid">
+                <!-- Weather Impact -->
+                <div class="analytics-card">
+                    <h3>🌦️ Weather Impact on Demand</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                        How each weather type affects daily bookings vs clear-day baseline
+                    </p>
+                    <div id="weatherImpact"></div>
+                </div>
+
+                <!-- Top Demand Slots -->
+                <div class="analytics-card">
+                    <h3>🔥 Top Demand Slots</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                        Highest avg bookings by day type × hour × month
+                    </p>
+                    <div id="topSlots"></div>
+                </div>
+
+                <!-- Demand Volatility -->
+                <div class="analytics-card full-width">
+                    <h3>📈 Demand Volatility by Hour</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                        Mean bookings (bar) with standard deviation — higher CV means less predictable demand
+                    </p>
+                    <div id="volatility"></div>
+                </div>
+
+                <!-- Hour × Day-of-Week Heatmap -->
+                <div class="analytics-card full-width">
+                    <h3>🗓️ Demand Heatmap — Hour × Day of Week</h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
+                        Cross-dimensional demand intensity. Hover for exact values.
+                    </p>
+                    <div id="heatmap" class="heatmap-container"></div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>Powered by DuckDB • Analyzed from Historical Booking Data</p>
+        </footer>
+    </div>
+
+    <script>
+        const MONTH_NAMES = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const WEATHER_ICONS = {
+            clear: '☀️', rain: '🌧️', heavy_rain: '⛈️', fog: '🌫️', hot: '🔥'
+        };
+
+        document.addEventListener('DOMContentLoaded', loadAnalytics);
+
+        async function loadAnalytics() {
+            try {
+                const resp = await fetch('/api/analytics');
+                if (!resp.ok) throw new Error('Analytics not available');
+                const data = await resp.json();
+                renderAll(data);
+            } catch (err) {
+                document.getElementById('mainContent').innerHTML =
+                    `<div class="analytics-card full-width">
+                        <h3>⚠️ Analytics Not Available</h3>
+                        <p>Run <code>python3 data/duckdb_analyzer.py</code> to generate analytics.</p>
+                    </div>`;
+            }
+        }
+
+        function renderAll(data) {
+            renderStats(data.stats);
+            renderWeatherImpact(data.weather_impact);
+            renderTopSlots(data.top_demand_slots);
+            renderVolatility(data.demand_volatility);
+            renderHeatmap(data.hour_by_dow);
+        }
+
+        function renderStats(stats) {
+            document.getElementById('statsSummary').innerHTML = `
+                <div class="stat-chip"><strong>${stats.total_bookings.toLocaleString()}</strong> total bookings</div>
+                <div class="stat-chip"><strong>${stats.total_days}</strong> days analyzed</div>
+                <div class="stat-chip"><strong>${stats.baseline_daily_bookings}</strong> avg/day</div>
+                <div class="stat-chip"><strong>${stats.date_range.start}</strong> → <strong>${stats.date_range.end}</strong></div>
+                <div class="stat-chip">Engine: <strong>DuckDB</strong></div>
+            `;
+        }
+
+        function renderWeatherImpact(impact) {
+            const container = document.getElementById('weatherImpact');
+            const sorted = Object.entries(impact).sort((a, b) => b[1].ratio_vs_clear - a[1].ratio_vs_clear);
+            const maxRatio = Math.max(...sorted.map(([, d]) => d.ratio_vs_clear));
+
+            let html = `<table class="impact-table">
+                <thead><tr><th>Weather</th><th>Impact</th><th>Avg/Day</th><th>Days</th></tr></thead>
+                <tbody>`;
+
+            for (const [weather, d] of sorted) {
+                const pct = (d.ratio_vs_clear / maxRatio) * 100;
+                const color = d.ratio_vs_clear >= 1.0 ? '#22c55e' :
+                              d.ratio_vs_clear >= 0.7 ? '#eab308' : '#ef4444';
+                const icon = WEATHER_ICONS[weather] || '🌤️';
+                const arrow = d.ratio_vs_clear > 1.0 ? '↑' : d.ratio_vs_clear < 1.0 ? '↓' : '=';
+
+                html += `<tr>
+                    <td><span class="weather-icon">${icon}</span>${weather.replace('_', ' ')}</td>
+                    <td>
+                        <div class="impact-bar">
+                            <div class="impact-bar-fill" style="width: ${pct}%; background: ${color};"></div>
+                            <span class="impact-bar-label" style="color: ${color}">${arrow} ${d.ratio_vs_clear}×</span>
+                        </div>
+                    </td>
+                    <td>${d.avg_daily_bookings}</td>
+                    <td>${d.num_days}</td>
+                </tr>`;
+            }
+
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+        }
+
+        function renderTopSlots(slots) {
+            const container = document.getElementById('topSlots');
+            const top10 = slots.slice(0, 10);
+
+            container.innerHTML = top10.map((slot, i) => `
+                <div class="slot-item">
+                    <div class="slot-rank">#${i + 1}</div>
+                    <div class="slot-details">
+                        <div class="slot-day-type">${slot.day_type.replace(/_/g, ' ')}</div>
+                        <div class="slot-meta">${String(slot.hour).padStart(2, '0')}:00 • ${MONTH_NAMES[slot.month]}</div>
+                    </div>
+                    <div class="slot-bookings">${slot.avg_bookings}</div>
+                </div>
+            `).join('');
+        }
+
+        function renderVolatility(vol) {
+            const container = document.getElementById('volatility');
+            const entries = Object.entries(vol).sort((a, b) => parseInt(a[0]) - parseInt(b[0]));
+            const maxMean = Math.max(...entries.map(([, d]) => d.mean + d.std_dev));
+
+            container.innerHTML = entries.map(([hour, d]) => {
+                const meanPct = (d.mean / maxMean) * 100;
+                const stdPct = ((d.mean + d.std_dev) / maxMean) * 100;
+                const cv = d.coefficient_of_variation || 0;
+                const color = cv < 0.5 ? '#22c55e' : cv < 0.8 ? '#eab308' : '#ef4444';
+
+                return `
+                    <div class="volatility-row">
+                        <div class="volatility-hour">${String(hour).padStart(2, '0')}:00</div>
+                        <div class="volatility-bar-container">
+                            <div class="volatility-bar-std" style="width: ${stdPct}%;"></div>
+                            <div class="volatility-bar-mean" style="width: ${meanPct}%; background: ${color};"></div>
+                        </div>
+                        <div class="volatility-value">μ=${d.mean} σ=${d.std_dev}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderHeatmap(hourByDow) {
+            const container = document.getElementById('heatmap');
+            if (!hourByDow) {
+                container.innerHTML = '<p style="color: var(--text-muted);">Heatmap data not available.</p>';
+                return;
+            }
+
+            const hours = Array.from({ length: 24 }, (_, i) => i);
+
+            let html = '<table class="heatmap-table"><thead><tr><th></th>';
+            hours.forEach(h => { html += `<th>${String(h).padStart(2, '0')}</th>`; });
+            html += '</tr></thead><tbody>';
+
+            for (let dow = 0; dow < 7; dow++) {
+                html += `<tr><th>${DAY_NAMES[dow]}</th>`;
+                const dayData = hourByDow[String(dow)] || {};
+
+                for (const h of hours) {
+                    const val = dayData[String(h)] || 0;
+                    const color = heatmapColor(val);
+                    html += `<td class="heatmap-cell" style="background: ${color};" title="${DAY_NAMES[dow]} ${String(h).padStart(2,'0')}:00 = ${val.toFixed(2)}">${val.toFixed(2)}</td>`;
+                }
+                html += '</tr>';
+            }
+
+            html += '</tbody></table>';
+            html += `<div class="heatmap-legend">
+                <span>Low</span>
+                <div class="legend-gradient"></div>
+                <span>High</span>
+            </div>`;
+
+            container.innerHTML = html;
+        }
+
+        function heatmapColor(val) {
+            // val is 0-1 normalized
+            if (val < 0.15) return `rgba(30, 30, 60, 0.8)`;
+            if (val < 0.3) return `rgba(59, 130, 246, ${0.3 + val})`;
+            if (val < 0.5) return `rgba(34, 197, 94, ${0.3 + val})`;
+            if (val < 0.7) return `rgba(234, 179, 8, ${0.3 + val * 0.5})`;
+            return `rgba(239, 68, 68, ${0.5 + val * 0.5})`;
+        }
+    </script>
+</body>
+
+</html>
