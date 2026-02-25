@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dynamic Pricing Engine — Architecture</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Inter:wght@400;600&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #fafafa;
+            font-family: 'Inter', sans-serif;
+            padding: 40px;
+            min-height: 100vh;
+        }
+
+        h1 {
+            font-family: 'Caveat', cursive;
+            font-size: 2.8rem;
+            text-align: center;
+            color: #1a1a2e;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #888;
+            font-size: 0.95rem;
+            margin-bottom: 40px;
+        }
+
+        /* Canvas */
+        .canvas {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        /* Section boxes */
+        .section {
+            border: 2.5px dashed;
+            border-radius: 16px;
+            padding: 24px 20px 20px;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .section-label {
+            position: absolute;
+            top: -14px;
+            left: 24px;
+            background: #fafafa;
+            padding: 0 12px;
+            font-family: 'Caveat', cursive;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .section.data {
+            border-color: #60a5fa;
+        }
+
+        .section.data .section-label {
+            color: #2563eb;
+        }
+
+        .section.runtime {
+            border-color: #34d399;
+        }
+
+        .section.runtime .section-label {
+            color: #059669;
+        }
+
+        .section.frontend {
+            border-color: #a78bfa;
+        }
+
+        .section.frontend .section-label {
+            color: #7c3aed;
+        }
+
+        /* Flow rows */
+        .flow {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .flow.vertical {
+            flex-direction: column;
+        }
+
+        /* Nodes */
+        .node {
+            border: 2.5px solid;
+            border-radius: 14px;
+            padding: 14px 18px;
+            min-width: 140px;
+            text-align: center;
+            position: relative;
+            background: white;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .node:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        }
+
+        .node .title {
+            font-family: 'Caveat', cursive;
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .node .desc {
+            font-size: 0.72rem;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .node .detail {
+            font-size: 0.65rem;
+            color: #999;
+            margin-top: 6px;
+            font-style: italic;
+            line-height: 1.3;
+        }
+
+        /* Node colors */
+        .node.blue {
+            border-color: #60a5fa;
+            background: #eff6ff;
+        }
+
+        .node.blue .title {
+            color: #2563eb;
+        }
+
+        .node.green {
+            border-color: #34d399;
+            background: #ecfdf5;
+        }
+
+        .node.green .title {
+            color: #059669;
+        }
+
+        .node.purple {
+            border-color: #a78bfa;
+            background: #f5f3ff;
+        }
+
+        .node.purple .title {
+            color: #7c3aed;
+        }
+
+        .node.orange {
+            border-color: #fb923c;
+            background: #fff7ed;
+        }
+
+        .node.orange .title {
+            color: #ea580c;
+        }
+
+        .node.red {
+            border-color: #f87171;
+            background: #fef2f2;
+        }
+
+        .node.red .title {
+            color: #dc2626;
+        }
+
+        .node.gray {
+            border-color: #9ca3af;
+            background: #f9fafb;
+        }
+
+        .node.gray .title {
+            color: #4b5563;
+        }
+
+        .node.cylinder {
+            border-radius: 8px;
+            border-top: 4px solid;
+            border-bottom: 4px solid;
+            min-width: 120px;
+        }
+
+        /* Arrows */
+        .arrow {
+            font-size: 1.8rem;
+            color: #9ca3af;
+            flex-shrink: 0;
+            font-family: 'Caveat', cursive;
+        }
+
+        .arrow.down {
+            transform: rotate(90deg);
+        }
+
+        .arrow-label {
+            font-size: 0.65rem;
+            color: #9ca3af;
+            text-align: center;
+            margin-top: -8px;
+        }
+
+        /* Splits */
+        .split {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            align-items: flex-start;
+            margin-top: 12px;
+        }
+
+        .split .branch {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* Step badges */
+        .steps {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 8px;
+        }
+
+        .step-badge {
+            font-size: 0.58rem;
+            padding: 2px 6px;
+            border-radius: 8px;
+            background: rgba(5, 150, 105, 0.15);
+            color: #059669;
+            white-space: nowrap;
+        }
+
+        /* Side panels */
+        .side-panels {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 8px;
+        }
+
+        /* Dotted connectors */
+        .connector {
+            border-left: 2px dashed #ccc;
+            height: 25px;
+            margin: 0 auto;
+        }
+
+        .connector.colored {
+            border-left-color: #60a5fa;
+        }
+
+        /* Runtime detail row */
+        .runtime-flow {
+            display: flex;
+            align-items: stretch;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .runtime-flow .node {
+            flex: 1;
+            min-width: 160px;
+            max-width: 220px;
+        }
+
+        /* Override list */
+        .override-list {
+            font-size: 0.6rem;
+            text-align: left;
+            margin-top: 4px;
+            color: #777;
+        }
+
+        .override-list span {
+            display: block;
+            padding: 1px 0;
+        }
+
+        /* Footer */
+        .footer-row {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        /* Price trace */
+        .price-trace {
+            background: white;
+            border: 2px solid #f87171;
+            border-radius: 14px;
+            padding: 18px;
+            max-width: 100%;
+            margin-top: 30px;
+        }
+
+        .price-trace .title {
+            font-family: 'Caveat', cursive;
+            font-size: 1.3rem;
+            color: #dc2626;
+            margin-bottom: 10px;
+        }
+
+        .trace-steps {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .trace-step {
+            background: #fef2f2;
+            border: 1.5px solid #fca5a5;
+            border-radius: 10px;
+            padding: 8px 12px;
+            text-align: center;
+            font-size: 0.7rem;
+            min-width: 100px;
+        }
+
+        .trace-step strong {
+            display: block;
+            font-family: 'Caveat', cursive;
+            font-size: 0.95rem;
+            color: #dc2626;
+            margin-bottom: 2px;
+        }
+
+        .trace-arrow {
+            color: #fca5a5;
+            font-size: 1.4rem;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 16px;
+            }
+
+            h1 {
+                font-size: 2rem;
+            }
+
+            .runtime-flow {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .runtime-flow .node {
+                max-width: 90%;
+            }
+
+            .split {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .trace-steps {
+                flex-direction: column;
+            }
+
+            .trace-arrow {
+                transform: rotate(90deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>🏍️ Dynamic Pricing Engine</h1>
+    <p class="subtitle">Complete system architecture — from data generation to final ₹ price</p>
+
+    <div class="canvas">
+
+        <!-- ════════ DATA PIPELINE ════════ -->
+        <div class="section data">
+            <span class="section-label">📊 Data Pipeline (Offline, Run Once)</span>
+
+            <div class="flow">
+                <div class="node blue">
+                    <div class="title">generate_dataset.py</div>
+                    <div class="desc">Creates synthetic bookings</div>
+                    <div class="detail">classify_day() • get_season()<br>weather probs • 9 day types</div>
+                </div>
+
+                <div class="arrow">→</div>
+
+                <div class="node blue cylinder">
+                    <div class="title">📄 bookings.csv</div>
+                    <div class="desc">296K rows × 2 years</div>
+                    <div class="detail">2024-01-01 → 2025-12-31</div>
+                </div>
+
+                <div class="arrow">→</div>
+
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="node blue">
+                            <div class="title">analyze_demand.py</div>
+                            <div class="desc">Group → Average → Normalize</div>
+                            <div class="detail">avg bookings/day per category<br>then max-normalize to [0, 1]</div>
+                        </div>
+                        <div class="arrow">→</div>
+                        <div class="node orange cylinder">
+                            <div class="title">📋 demand_profiles.json</div>
+                            <div class="desc">Used by Pricing Engine</div>
+                            <div class="detail">hourly • day_of_week • monthly<br>day_type • weather_by_month</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div class="node blue">
+                            <div class="title">duckdb_analyzer.py</div>
+                            <div class="desc">SQL cross-dimensional</div>
+                            <div class="detail">hour×dow • dow×month<br>weather impact • volatility</div>
+                        </div>
+                        <div class="arrow">→</div>
+                        <div class="node purple cylinder">
+                            <div class="title">📋 duckdb_profiles.json</div>
+                            <div class="desc">Used by Analytics Page</div>
+                            <div class="detail">168-cell heatmap matrices<br>top demand slots • std dev</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════ RUNTIME ENGINE ════════ -->
+        <div class="section runtime">
+            <span class="section-label">⚡ Runtime Engine (Every API Call)</span>
+
+            <div class="runtime-flow">
+                <div class="node gray">
+                    <div class="title">📨 API Request</div>
+                    <div class="desc">POST /api/price</div>
+                    <div class="detail">datetime: 2025-10-18 09:00<br>vehicle: standard_bike<br>duration: 8 hours</div>
+                </div>
+
+                <div class="arrow">→</div>
+
+                <div class="node green">
+                    <div class="title">🧠 DemandModel</div>
+                    <div class="desc">3 lookups → weighted blend</div>
+                    <div class="detail">
+                        day_type × <strong>0.45</strong><br>
+                        + month × <strong>0.30</strong><br>
+                        + hour × <strong>0.25</strong><br>
+                        = score (0 → 1)
+                    </div>
+                </div>
+
+                <div class="arrow">→</div>
+
+                <div class="node green">
+                    <div class="title">🔍 OverrideDetector</div>
+                    <div class="desc">Auto-detect special context</div>
+                    <div class="override-list">
+                        <span>🎉 Festival/Holiday → 1.30-1.40×</span>
+                        <span>📅 Long weekend → 1.50×</span>
+                        <span>🌧 Rain likely → 0.85×</span>
+                        <span>🌡 Heatwave → 0.90×</span>
+                        <span>🔒 Stacking cap: 2.0×</span>
+                    </div>
+                </div>
+
+                <div class="arrow">→</div>
+
+                <div class="node green" style="max-width: 260px;">
+                    <div class="title">💰 PriceEngine</div>
+                    <div class="desc">7-Step Pipeline</div>
+                    <div class="steps">
+                        <span class="step-badge">1. Score</span>
+                        <span class="step-badge">2. Surge</span>
+                        <span class="step-badge">3. Overrides</span>
+                        <span class="step-badge">4. Clamp</span>
+                        <span class="step-badge">5. Discount</span>
+                        <span class="step-badge">6. Rate</span>
+                        <span class="step-badge">7. 🛡️ Guard</span>
+                    </div>
+                    <div class="detail">multiplier = 0.70 + score × 1.30<br>then floor/ceiling clamp</div>
+                </div>
+
+                <div class="arrow">→</div>
+
+                <div class="node red">
+                    <div class="title">📊 PriceResult</div>
+                    <div class="desc">Complete breakdown</div>
+                    <div class="detail">final_price: ₹873<br>effective_rate: ₹109/hr<br>demand zone: Surge
+                        🔴<br>explanation: 12 steps<br>warnings: confidence</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ════════ FRONTEND + CONFIG ════════ -->
+        <div class="footer-row">
+            <div class="section frontend" style="flex: 2;">
+                <span class="section-label">🎨 Frontend</span>
+                <div class="flow" style="gap: 20px;">
+                    <div class="node purple">
+                        <div class="title">index.html + app.js</div>
+                        <div class="desc">Pricing Dashboard</div>
+                        <div class="detail">Vehicle grid • DateTime picker<br>Duration selector • Results<br>POST
+                            /api/price</div>
+                    </div>
+                    <div class="node purple">
+                        <div class="title">analytics.html</div>
+                        <div class="desc">Reporting Page</div>
+                        <div class="detail">Weather impact • Day ranking<br>Monthly trends • Heatmap<br>GET
+                            /api/analytics</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section" style="border-color: #fb923c; flex: 1;">
+                <span class="section-label" style="color: #ea580c;">⚙️ config.py</span>
+                <div style="font-size: 0.75rem; color: #666; line-height: 2;">
+                    🏍️ Base rates: ₹60–250/hr<br>
+                    📈 Multiplier: 0.70× – 2.00×<br>
+                    🛡️ Floor: ₹40–160/hr<br>
+                    🛡️ Ceiling: ₹150–625/hr<br>
+                    ⏱️ Duration: 4/8/24hr tiers<br>
+                    📅 Holiday calendar 2024-26<br>
+                    🔒 Override cap: 2.0×<br>
+                    📊 Confidence: 90 days
+                </div>
+            </div>
+
+            <div class="node gray" style="align-self: flex-start; margin-top: 24px;">
+                <div class="title">🧪 tests/</div>
+                <div class="desc" style="font-size: 0.8rem; color: #059669; font-weight: 600;">78 tests ✅</div>
+                <div class="detail">21 demand model<br>36 price engine<br>21 duckdb analyzer</div>
+            </div>
+        </div>
+
+        <!-- ════════ PRICE TRACE ════════ -->
+        <div class="price-trace">
+            <div class="title">🔎 Example: Standard Bike, Saturday Oct 18 2025, 9 AM, 8 hours</div>
+            <div class="trace-steps">
+                <div class="trace-step">
+                    <strong>Lookup</strong>
+                    day=0.558<br>month=1.0<br>hour=0.89
+                </div>
+                <span class="trace-arrow">→</span>
+                <div class="trace-step">
+                    <strong>Blend</strong>
+                    .45×.558 + .30×1.0<br>+ .25×.89<br>= <strong>0.774</strong>
+                </div>
+                <span class="trace-arrow">→</span>
+                <div class="trace-step">
+                    <strong>Surge</strong>
+                    0.70 + 0.774×1.30<br>= <strong>1.706×</strong>
+                </div>
+                <span class="trace-arrow">→</span>
+                <div class="trace-step">
+                    <strong>Override</strong>
+                    No special context<br>factor = <strong>1.0×</strong>
+                </div>
+                <span class="trace-arrow">→</span>
+                <div class="trace-step">
+                    <strong>Rate</strong>
+                    ₹80 × 1.706<br>× 0.80 (8hr)<br>= <strong>₹109/hr</strong>
+                </div>
+                <span class="trace-arrow">→</span>
+                <div class="trace-step">
+                    <strong>🛡️ Guard</strong>
+                    ₹109 within<br>[₹50, ₹200] ✓
+                </div>
+                <span class="trace-arrow">→</span>
+                <div class="trace-step" style="background: #dcfce7; border-color: #34d399;">
+                    <strong style="color: #059669;">💰 Total</strong>
+                    ₹109 × 8hrs<br>= <strong style="font-size: 1.1rem;">₹873</strong>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</body>
+
+</html>
