@@ -32,6 +32,26 @@ VEHICLE_DISPLAY_NAMES: Dict[VehicleType, str] = {
 }
 
 # ──────────────────────────────────────────────
+# Absolute Price Guards (₹ per hour)
+# Floor: prevents pricing below operational cost
+# Ceiling: prevents customer overcharging
+# ──────────────────────────────────────────────
+
+PRICE_FLOOR_RATES: Dict[VehicleType, float] = {
+    VehicleType.SCOOTER: 40.0,         # ~65% of ₹60 base
+    VehicleType.STANDARD_BIKE: 50.0,   # ~63% of ₹80 base
+    VehicleType.PREMIUM_BIKE: 100.0,   # ~67% of ₹150 base
+    VehicleType.SUPER_PREMIUM: 160.0,  # ~64% of ₹250 base
+}
+
+PRICE_CEILING_RATES: Dict[VehicleType, float] = {
+    VehicleType.SCOOTER: 150.0,        # 2.5× of ₹60 base
+    VehicleType.STANDARD_BIKE: 200.0,  # 2.5× of ₹80 base
+    VehicleType.PREMIUM_BIKE: 375.0,   # 2.5× of ₹150 base
+    VehicleType.SUPER_PREMIUM: 625.0,  # 2.5× of ₹250 base
+}
+
+# ──────────────────────────────────────────────
 # Demand Multiplier Bounds
 # ──────────────────────────────────────────────
 

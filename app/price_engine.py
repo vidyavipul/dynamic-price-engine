@@ -14,6 +14,7 @@ from app.config import (
     MIN_MULTIPLIER, MAX_MULTIPLIER,
     DURATION_DISCOUNT_TIERS, LOW_CONFIDENCE_DAYS,
     INDIAN_HOLIDAYS,
+    PRICE_FLOOR_RATES, PRICE_CEILING_RATES,
 )
 from app.demand_model import DemandModel, DemandResult
 from app.overrides import OverrideDetector
@@ -166,6 +167,22 @@ class PriceEngine:
         # ── Step 6: Compute price ──
         base_rate = VEHICLE_BASE_RATES[v_type]
         effective_hourly = base_rate * final_multiplier * duration_discount
+
+        # ── Step 7: Apply absolute price floor and ceiling ──
+        floor_rate = PRICE_FLOOR_RATES[v_type]
+        ceiling_rate = PRICE_CEILING_RATES[v_type]
+        price_was_clamped = False
+        clamp_direction = None
+
+        if effective_hourly < floor_rate:
+            price_was_clamped = True
+            clamp_direction = "floor"
+            effective_hourly = floor_rate
+        elif effective_hourly > ceiling_rate:
+            price_was_clamped = True
+            clamp_direction = "ceiling"
+            effective_hourly = ceiling_rate
+
         total_price = effective_hourly * duration_hours
 
         # ── Build explanation ──
@@ -173,7 +190,8 @@ class PriceEngine:
             v_type, base_rate, duration_hours, demand_result,
             surge_multiplier, override_factor, detected_overrides,
             override_capped, final_multiplier, duration_discount,
-            effective_hourly, total_price
+            effective_hourly, total_price,
+            price_was_clamped, clamp_direction, floor_rate, ceiling_rate
         )
 
         # ── Build demand dict ──
@@ -226,7 +244,9 @@ class PriceEngine:
     def _build_explanation(
         self, v_type, base_rate, duration, demand, surge,
         override_factor, detected_overrides, override_capped,
-        final_mult, duration_discount, effective_hourly, total
+        final_mult, duration_discount, effective_hourly, total,
+        price_was_clamped=False, clamp_direction=None,
+        floor_rate=None, ceiling_rate=None
     ) -> List[str]:
         """Build step-by-step human-readable pricing explanation."""
         steps = []
@@ -281,6 +301,17 @@ class PriceEngine:
         if duration_discount < 1.0:
             discount_pct = int((1 - duration_discount) * 100)
             steps.append(f"⏱️ Duration discount ({duration}hrs): {discount_pct}% off")
+
+        if price_was_clamped and clamp_direction == "floor":
+            steps.append(
+                f"🛡️ Price floor applied: ₹{effective_hourly:.2f}/hr "
+                f"(minimum ₹{floor_rate}/hr to cover operational costs)"
+            )
+        elif price_was_clamped and clamp_direction == "ceiling":
+            steps.append(
+                f"🛡️ Price ceiling applied: ₹{effective_hourly:.2f}/hr "
+                f"(maximum ₹{ceiling_rate}/hr for fair pricing)"
+            )
 
         steps.append(f"💰 Effective rate: ₹{effective_hourly:.2f}/hr × {duration}hrs = ₹{total:.2f}")
 

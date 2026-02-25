@@ -356,3 +356,49 @@ class TestExplanation:
             "standard_bike", 8
         )
         assert any("auto-detected" in step.lower() or "Auto-detected" in step for step in result.explanation)
+
+
+# ──────────────────────────────────────────────
+# Price Floor & Ceiling Guards
+# ──────────────────────────────────────────────
+
+class TestPriceGuards:
+    """Absolute price floor and ceiling should prevent extreme pricing."""
+
+    def test_floor_prevents_below_operational_cost(self, engine):
+        """Dead demand + 24hr discount should not go below floor rate."""
+        # Summer Tuesday 3 AM = dead demand + 24hr = max discount stacking
+        result = engine.calculate_price(
+            datetime(2025, 7, 8, 3, 0),  # Tuesday 3AM monsoon
+            "scooter", 24
+        )
+        # Floor for scooter is ₹40/hr
+        assert result.effective_hourly_rate >= 40.0, \
+            f"Effective rate ₹{result.effective_hourly_rate} is below floor ₹40"
+
+    def test_ceiling_prevents_overcharging(self, engine):
+        """Peak surge should not exceed ceiling rate."""
+        # Diwali on a long weekend = massive surge stacking
+        result = engine.calculate_price(
+            datetime(2025, 10, 20, 9, 0),  # Diwali
+            "super_premium", 1
+        )
+        # Ceiling for super_premium is ₹625/hr
+        assert result.effective_hourly_rate <= 625.0, \
+            f"Effective rate ₹{result.effective_hourly_rate} exceeds ceiling ₹625"
+
+    def test_all_vehicles_within_bounds(self, engine):
+        """Every vehicle in any scenario should stay within floor-ceiling."""
+        from app.config import PRICE_FLOOR_RATES, PRICE_CEILING_RATES, VehicleType
+        test_cases = [
+            (datetime(2025, 7, 8, 3, 0), 24),   # worst discount
+            (datetime(2025, 10, 20, 9, 0), 1),   # worst surge
+            (datetime(2025, 5, 15, 9, 0), 8),    # normal day
+        ]
+        for dt, dur in test_cases:
+            for vt in VehicleType:
+                result = engine.calculate_price(dt, vt.value, dur)
+                floor = PRICE_FLOOR_RATES[vt]
+                ceiling = PRICE_CEILING_RATES[vt]
+                assert floor <= result.effective_hourly_rate <= ceiling, \
+                    f"{vt.value} at {dt}: ₹{result.effective_hourly_rate} not in [{floor}, {ceiling}]"
