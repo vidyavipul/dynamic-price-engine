@@ -73,7 +73,7 @@ def classify_day(d: date) -> str:
     """
     Classify a date into a day type for demand estimation.
     Returns one of: long_weekend, holiday, bridge_strong, holiday_eve,
-                    saturday, sunday, friday, bridge_weak, exam_weekday, regular_weekday
+                    saturday, sunday, friday, bridge_weak, regular_weekday
     """
     weekday = d.weekday()  # 0=Mon, 6=Sun
     is_holiday = d in INDIAN_HOLIDAYS
@@ -105,10 +105,6 @@ def classify_day(d: date) -> str:
     # Weak bridge: needs 2 leave days to connect
     if _is_weak_bridge(d):
         return "bridge_weak"
-
-    # Exam season: March-April weekdays
-    if month in (3, 4) and weekday < 5:
-        return "exam_weekday"
 
     return "regular_weekday"
 
@@ -217,7 +213,6 @@ DAY_TYPE_BOOKING_MULTIPLIER = {
     "friday":          1.5,
     "bridge_weak":     1.3,
     "regular_weekday": 1.0,
-    "exam_weekday":    0.6,
 }
 
 # Season multiplier for booking volume

@@ -188,8 +188,6 @@ class DemandModel:
 
         if self._is_weak_bridge(d):
             return "bridge_weak"
-        if month in (3, 4) and weekday < 5:
-            return "exam_weekday"
 
         return "regular_weekday"
 
@@ -271,6 +269,5 @@ class DemandModel:
                 "friday": 0.55,
                 "bridge_weak": 0.45,
                 "regular_weekday": 0.35,
-                "exam_weekday": 0.18,
             },
         }

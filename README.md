@@ -39,7 +39,7 @@ open http://localhost:5000
 
 - **4 vehicle types**: Scooter (₹60/hr) → Super Premium (₹250/hr)
 - **Data-derived demand profiles**: Not hardcoded — analyzed from 287K synthetic bookings
-- **Smart day classification**: Long weekends, bridge days, holiday eves, exam seasons
+- **Smart day classification**: Long weekends, bridge days, holiday eves
 - **5 demand zones**: Dead 🔵 → Low 🟢 → Normal ⚪ → High 🟡 → Surge 🔴
 - **Contextual overrides**: Rain (discount), Festivals (surge), Events, Heatwave
 - **Duration discounts**: 4+hrs → 10% off, 8+hrs → 20% off, 24+hrs → 30% off
