@@ -57,7 +57,7 @@ PRICE_CEILING_RATES: Dict[VehicleType, float] = {
 
 MIN_MULTIPLIER = 0.70   # Floor: 30% discount (dead demand)
 MAX_MULTIPLIER = 2.00   # Ceiling: 2× surge cap
-BASELINE_DEMAND = 0.50  # Demand score where multiplier = ~1.0×
+BASELINE_DEMAND = 0.50  # Midpoint demand score where multiplier ≈ 1.35× (includes margin)
 
 # ──────────────────────────────────────────────
 # Duration Discounts (applied AFTER surge pricing)
@@ -75,6 +75,10 @@ DURATION_DISCOUNT_TIERS: List[Tuple[int, float]] = [
 # ──────────────────────────────────────────────
 
 MAX_OVERRIDE_FACTOR = 2.0  # Combined override factor capped here
+
+# When multiple overrides are detected (e.g., Diwali + long weekend + holiday eve),
+# their factors are multiplied together: 1.40 × 1.50 × 1.15 = 2.42.
+# The cap limits the combined result to 2.0× so overrides can't create an absurdly high surge.
 
 # ──────────────────────────────────────────────
 # Demand Signal Weights (must sum to 1.0)
@@ -160,8 +164,6 @@ INDIAN_HOLIDAYS: Dict[date, str] = {
     date(2026, 12, 25): "Christmas",
 }
 
-# ──────────────────────────────────────────────
 # Advance Booking Confidence Thresholds
-# ──────────────────────────────────────────────
 
 LOW_CONFIDENCE_DAYS = 90  # Bookings > 90 days out get low-confidence flag

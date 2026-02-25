@@ -8,15 +8,13 @@ Generates ~2 years of realistic booking data with built-in demand patterns:
 - Bridge day boosts (2× when connecting holiday to weekend)
 - Morning pickup peaks
 - Monsoon dips
-- Exam season drops
 - Seasonal variations
 """
 
 import random
-import json
 import os
 from datetime import datetime, timedelta, date
-from typing import List, Dict, Optional
+from typing import List, Dict
 import csv
 
 # Add parent to path so we can import config
